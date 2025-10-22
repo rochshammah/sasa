@@ -67,37 +67,29 @@ export default function Landing() {
               {isAuthenticated ? (
                 <>
                   <Link href="/jobs">
-                    <a>
-                      <Button size="lg" className="w-full sm:w-auto text-lg" data-testid="button-browse-services">
-                        Browse Services
-                        <ArrowRight className="ml-2 h-5 w-5" />
-                      </Button>
-                    </a>
+                    <Button size="lg" className="w-full sm:w-auto text-lg" data-testid="button-browse-services">
+                      Browse Services
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
                   </Link>
                   <Link href="/post-job">
-                    <a>
-                      <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg" data-testid="button-post-request">
-                        Post a Request
-                      </Button>
-                    </a>
+                    <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg" data-testid="button-post-request">
+                      Post a Request
+                    </Button>
                   </Link>
                 </>
               ) : (
                 <>
                   <Link href="/signup">
-                    <a>
-                      <Button size="lg" className="w-full sm:w-auto text-lg" data-testid="button-get-started">
-                        Get Started
-                        <ArrowRight className="ml-2 h-5 w-5" />
-                      </Button>
-                    </a>
+                    <Button size="lg" className="w-full sm:w-auto text-lg" data-testid="button-get-started">
+                      Get Started
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
                   </Link>
                   <Link href="/login">
-                    <a>
-                      <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg" data-testid="button-login-hero">
-                        Login
-                      </Button>
-                    </a>
+                    <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg" data-testid="button-login-hero">
+                      Login
+                    </Button>
                   </Link>
                 </>
               )}

@@ -23,39 +23,33 @@ export function Header() {
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link href="/">
-            <a className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1" data-testid="link-home">
+            <div className="flex items-center gap-2 hover-elevate rounded-md px-2 py-1 cursor-pointer" data-testid="link-home">
               <Briefcase className="h-6 w-6 text-primary" />
               <span className="text-xl font-bold">JobTradeSasa</span>
-            </a>
+            </div>
           </Link>
 
           {isAuthenticated && (
             <nav className="hidden md:flex items-center gap-1">
               <Link href="/jobs">
-                <a>
-                  <Button variant="ghost" data-testid="link-jobs">
-                    Browse Jobs
-                  </Button>
-                </a>
+                <Button variant="ghost" data-testid="link-jobs">
+                  Browse Jobs
+                </Button>
               </Link>
               {user?.role === 'provider' && (
                 <Link href="/dashboard">
-                  <a>
-                    <Button variant="ghost" data-testid="link-dashboard">
-                      <LayoutDashboard className="h-4 w-4 mr-2" />
-                      Dashboard
-                    </Button>
-                  </a>
+                  <Button variant="ghost" data-testid="link-dashboard">
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Dashboard
+                  </Button>
                 </Link>
               )}
               {user?.role === 'admin' && (
                 <Link href="/admin">
-                  <a>
-                    <Button variant="ghost" data-testid="link-admin">
-                      <LayoutDashboard className="h-4 w-4 mr-2" />
-                      Admin Panel
-                    </Button>
-                  </a>
+                  <Button variant="ghost" data-testid="link-admin">
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Admin Panel
+                  </Button>
                 </Link>
               )}
             </nav>
@@ -69,11 +63,9 @@ export function Header() {
             <>
               {user?.role === 'requester' && (
                 <Link href="/post-job">
-                  <a>
-                    <Button className="hidden sm:flex" data-testid="button-post-job">
-                      Post a Job
-                    </Button>
-                  </a>
+                  <Button className="hidden sm:flex" data-testid="button-post-job">
+                    Post a Job
+                  </Button>
                 </Link>
               )}
 
@@ -122,16 +114,12 @@ export function Header() {
           ) : (
             <div className="flex items-center gap-2">
               <Link href="/login">
-                <a>
-                  <Button variant="ghost" data-testid="button-login">
-                    Login
-                  </Button>
-                </a>
+                <Button variant="ghost" data-testid="button-login">
+                  Login
+                </Button>
               </Link>
               <Link href="/signup">
-                <a>
-                  <Button data-testid="button-signup">Get Started</Button>
-                </a>
+                <Button data-testid="button-signup">Get Started</Button>
               </Link>
             </div>
           )}
