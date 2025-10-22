@@ -28,9 +28,7 @@
       "dest": "/index.html"
     }
   ],
-  "env": {
-    "VITE_API_URL": "@api_url"
-  },
+  
   "build": {
     "env": {
       "VITE_API_URL": "@api_url"
