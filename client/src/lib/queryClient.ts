@@ -1,5 +1,8 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Get API URL from environment variable or use relative path for development
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -19,7 +22,11 @@ export async function apiRequest(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
+  // Prepend API_URL to the URL
+  const fullUrl = `${API_URL}${url}`;
+  console.log(`API Request: ${method} ${fullUrl}`); // Debug log
+
+  const res = await fetch(fullUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
@@ -43,7 +50,12 @@ export const getQueryFn: <T>(options: {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(queryKey.join("/") as string, {
+    // Prepend API_URL to the query key URL
+    const url = queryKey.join("/") as string;
+    const fullUrl = `${API_URL}${url}`;
+    console.log(`Query Fetch: ${fullUrl}`); // Debug log
+
+    const res = await fetch(fullUrl, {
       headers,
       credentials: "include",
     });
