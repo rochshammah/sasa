@@ -19,16 +19,13 @@ import {
   type InsertCategory,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc, asc } from "drizzle-orm";
+import { eq, and, sql, desc, asc, or } from "drizzle-orm";
 
 export interface IStorage {
-  // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: Omit<InsertUser, 'password'> & { passwordHash: string }): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
-
-  // Providers
   getProvider(userId: string): Promise<Provider | undefined>;
   createProvider(provider: InsertProvider & { userId: string }): Promise<Provider>;
   updateProvider(userId: string, data: Partial<Provider>): Promise<Provider | undefined>;
@@ -38,8 +35,6 @@ export interface IStorage {
     longitude?: number;
     radius?: number;
   }): Promise<any[]>;
-
-  // Jobs
   getJob(id: string): Promise<any | undefined>;
   getJobs(params: {
     categoryId?: string;
@@ -50,17 +45,11 @@ export interface IStorage {
   createJob(job: InsertJob & { requesterId: string }): Promise<Job>;
   updateJob(id: string, data: Partial<Job>): Promise<Job | undefined>;
   acceptJob(jobId: string, providerId: string): Promise<Job | undefined>;
-
-  // Messages
   getMessages(jobId: string): Promise<any[]>;
   createMessage(message: InsertMessage & { senderId: string }): Promise<Message>;
   getConversations(userId: string): Promise<any[]>;
-
-  // Ratings
   createRating(rating: InsertRating & { fromUserId: string }): Promise<Rating>;
   getProviderRatings(providerId: string): Promise<any[]>;
-
-  // Categories
   getCategories(): Promise<Category[]>;
   createCategory(category: InsertCategory): Promise<Category>;
 }
@@ -77,7 +66,7 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: Omit<InsertUser, 'password'> & { passwordHash: string }): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(insertUser)
@@ -187,7 +176,7 @@ export class DatabaseStorage implements IStorage {
   }): Promise<any[]> {
     const conditions = [];
 
-    if (params.categoryId) {
+    if (params.categoryId && params.categoryId !== 'all') {
       conditions.push(eq(jobs.categoryId, parseInt(params.categoryId)));
     }
     if (params.status) {
@@ -285,7 +274,10 @@ export class DatabaseStorage implements IStorage {
       .from(jobs)
       .leftJoin(users, eq(jobs.requesterId, users.id))
       .where(
-        sql`${jobs.requesterId} = ${userId} OR ${jobs.providerId} = ${userId}`
+        or(
+          eq(jobs.requesterId, userId),
+          eq(jobs.providerId, userId)
+        )
       );
 
     // For each job, get the last message
@@ -300,19 +292,21 @@ export class DatabaseStorage implements IStorage {
 
       if (lastMessage) {
         const otherUserId = job.requesterId === userId ? job.providerId : job.requesterId;
-        const [otherUser] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, otherUserId!));
+        if (otherUserId) {
+          const [otherUser] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, otherUserId));
 
-        conversations.push({
-          jobId: job.id,
-          jobTitle: job.title,
-          otherUser,
-          lastMessage: lastMessage.messageText,
-          lastMessageTime: lastMessage.createdAt,
-          unreadCount: 0, // TODO: Implement unread tracking
-        });
+          conversations.push({
+            jobId: job.id,
+            jobTitle: job.title,
+            otherUser,
+            lastMessage: lastMessage.messageText,
+            lastMessageTime: lastMessage.createdAt,
+            unreadCount: 0, // TODO: Implement unread tracking
+          });
+        }
       }
     }
 
@@ -362,7 +356,7 @@ export class DatabaseStorage implements IStorage {
 
   // Categories
   async getCategories(): Promise<Category[]> {
-    return await db.select().from(categories);
+    return await db.select().from(categories).orderBy(categories.name);
   }
 
   async createCategory(insertCategory: InsertCategory): Promise<Category> {
