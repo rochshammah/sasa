@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { authMiddleware, generateToken, type AuthRequest } from "./middleware/auth";
 import { insertUserSchema, insertJobSchema, insertMessageSchema, insertRatingSchema } from "@shared/schema";
 import { ZodError } from "zod";
+import { eq, desc } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
