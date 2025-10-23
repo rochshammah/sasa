@@ -1,5 +1,3 @@
-// server/index.ts
-
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
@@ -45,20 +43,31 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// ⭐ FIX 1: Add JSON body-parsing middleware
-app.use(express.json()); 
+declare module 'http' {
+  interface IncomingMessage {
+    rawBody: unknown
+  }
+}
 
-// Custom logging middleware (your existing code)
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({ extended: false }));
+
+// Request logging middleware
+app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.originalUrl.split("?")[0];
-  const originalResJson = res.json.bind(res);
-  let capturedJsonResponse: any;
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  res.json = (bodyJson: any, ...args: any[]) => {
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
@@ -109,9 +118,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     log('Database seed error: ' + (error as Error).message);
   }
 
-  // Start the server
-  const port = process.env.PORT || 3000;
-  server.listen(port, () => {
+  const port = parseInt(process.env.PORT || '5000', 10);
+  server.listen({
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  }, () => {
     log(`Server running on port ${port}`);
+    log(`Environment: ${app.get("env")}`);
   });
 })();
