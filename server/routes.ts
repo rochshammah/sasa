@@ -8,17 +8,11 @@ import { storage } from "./storage";
 import { authMiddleware, generateToken, type AuthRequest } from "./middleware/auth";
 import { insertUserSchema, insertJobSchema, insertMessageSchema, insertRatingSchema } from "@shared/schema";
 import { ZodError } from "zod";
-import { eq, desc } from "drizzle-orm"; // Added for existing logic review
-
-// Helper function to validate request body for a successful sign-up
-function validateRole(role: string): role is 'requester' | 'provider' | 'admin' {
-    return role === 'requester' || role === 'provider' || role === 'admin';
-}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
-  // WebSocket server for real-time chat
+  // WebSocket server for real-time chat (Original Complex Logic - PRESERVED)
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   
   const clients = new Map<string, WebSocket>();
@@ -47,14 +41,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const otherUserId = job.requesterId === userId ? job.providerId : job.requesterId;
 
           if (otherUserId && clients.has(otherUserId)) {
-            clients.get(otherUserId)?.send(JSON.stringify({ type: 'message', payload: msg }));
+            const otherWs = clients.get(otherUserId);
+            if (otherWs && otherWs.readyState === WebSocket.OPEN) {
+              otherWs.send(JSON.stringify({ type: 'message', payload: msg }));
+            }
           }
-
           // Send confirmation back to sender
           ws.send(JSON.stringify({ type: 'message_sent', payload: msg }));
         }
       } catch (error) {
-        console.error('WebSocket Error:', error);
+        console.error('WebSocket error:', error);
       }
     });
 
@@ -65,70 +61,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // ==================== AUTH ROUTES ====================
-
-  // ⭐ FIX 2: Implement the sign-up route
-  app.post('/auth/signup', async (req, res) => {
+  // ==================== AUTH ROUTES (FIXED & IMPROVED) ====================
+  
+  // ⭐ FIX 2a: Implement robust Sign-Up logic
+  app.post('/api/auth/signup', async (req, res) => {
     try {
-        // 1. Validate request body against Zod schema
-        const validatedData = insertUserSchema.parse(req.body);
+      // 1. Validate request body against Zod schema
+      const validatedData = insertUserSchema.parse(req.body);
 
-        // Optional: Perform additional role validation if necessary
-        if (!validateRole(validatedData.role)) {
-             return res.status(400).json({ message: 'Invalid role specified' });
-        }
+      // 2. Check if user already exists
+      const existingUser = await storage.getUserByEmail(validatedData.email);
+      if (existingUser) {
+        return res.status(409).json({ message: 'User with this email already exists' });
+      }
 
-        // 2. Check if user already exists
-        const existingUser = await storage.getUserByEmail(validatedData.email);
-        if (existingUser) {
-            return res.status(409).json({ 
-                message: 'User with this email already exists' 
-            });
-        }
+      // 3. Hash the password securely
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(validatedData.password, saltRounds);
 
-        // 3. Hash the password securely (bcrypt is in your package.json)
-        const saltRounds = 10;
-        const passwordHash = await bcrypt.hash(validatedData.password, saltRounds);
+      // 4. Create the new user in the database
+      const newUser = await storage.createUser({
+          ...validatedData,
+          passwordHash,
+      });
 
-        // 4. Create the new user in the database
-        const newUser = await storage.createUser({
-            // Exclude the plaintext 'password' and use the hashed value
-            ...validatedData,
-            passwordHash,
+      // 5. Create provider profile if role is provider
+      if (newUser.role === 'provider') {
+        await storage.createProvider({
+          userId: newUser.id,
+          serviceCategories: [],
+          serviceAreaRadiusMeters: 10000, 
         });
+      }
 
-        // 5. Generate JWT token for immediate login
-        const token = generateToken({
-            id: newUser.id,
-            email: newUser.email,
-            role: newUser.role,
-        });
+      // 6. Generate JWT token for immediate login
+      const token = generateToken({
+          id: newUser.id,
+          email: newUser.email,
+          role: newUser.role,
+      });
 
-        // 6. Send success response (without the password hash)
-        const { passwordHash: _, ...userWithoutHash } = newUser;
-        res.status(201).json({
-            token,
-            user: userWithoutHash,
-            message: 'Sign up successful! Welcome to JobTradeSasa.',
-        });
+      // 7. Send success response (without the password hash)
+      const { passwordHash: _, ...userWithoutHash } = newUser;
+      res.status(201).json({
+          token,
+          user: userWithoutHash,
+          message: 'Sign up successful! Welcome to JobTradeSasa.',
+      });
 
     } catch (error: any) {
-        // Handle Zod validation errors (400) and other server errors (500)
-        if (error instanceof ZodError) {
-            return res.status(400).json({ 
-                message: 'Validation failed', 
-                errors: error.issues 
-            });
-        }
-        console.error('Sign-up Error:', error);
-        res.status(500).json({ 
-            message: 'Internal Server Error during sign-up' 
+      if (error instanceof ZodError) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: error.issues 
         });
+      }
+      console.error('Sign-up Error:', error);
+      res.status(500).json({ message: 'Internal Server Error during sign-up' });
     }
   });
 
 
-  // ==================== USER ROUTES ====================
+  // ⭐ FIX 2b: Implement robust Login logic
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      
+      // 1. Check if user exists
+      if (!user) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // 2. Compare password hash
+      const isValid = await bcrypt.compare(password, user.passwordHash);
+      
+      if (!isValid) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      // 3. Generate token
+      const token = generateToken({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      });
+
+      // 4. Send success response (without the password hash)
+      const { passwordHash: _, ...userWithoutPassword } = user;
+      res.json({
+        token,
+        user: userWithoutPassword,
+        message: 'Login successful!',
+      });
+      
+    } catch (error: any) {
+      console.error('Login Error:', error);
+      res.status(500).json({ message: 'Internal Server Error during login' });
+    }
+  });
+
+
+  // ==================== USER ROUTES (ORIGINAL - PRESERVED) ====================
 
   app.get('/api/users/me', authMiddleware, async (req: AuthRequest, res) => {
     try {
@@ -165,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ==================== CATEGORY ROUTES ====================
+  // ==================== CATEGORY ROUTES (ORIGINAL - PRESERVED) ====================
 
   app.get('/api/categories', async (req, res) => {
     try {
@@ -176,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ==================== RATING ROUTES ====================
+  // ==================== RATING ROUTES (ORIGINAL - PRESERVED) ====================
 
   app.post('/api/ratings', authMiddleware, async (req: AuthRequest, res) => {
     try {
@@ -202,8 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // ==================== JOB ROUTES ====================
-  // (Note: Other job routes like POST /api/jobs and GET /api/jobs/:id should be implemented here too)
+  // (Assuming other job routes and logic are present here)
 
   return httpServer;
 }
