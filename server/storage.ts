@@ -1,5 +1,3 @@
-// server/storage.ts
-
 import { 
   users, 
   providers,
@@ -68,16 +66,11 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  // ⭐ FIX 3: Implementation for creating a new user
   async createUser(insertUser: Omit<InsertUser, 'password'> & { passwordHash: string }): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(insertUser)
       .returning();
-    
-    if (!user) {
-      throw new Error("Failed to create user in database.");
-    }
     return user;
   }
 
@@ -89,7 +82,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updated || undefined;
   }
-  
+
   // Providers
   async getProvider(userId: string): Promise<Provider | undefined> {
     const [provider] = await db
@@ -100,17 +93,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProvider(provider: InsertProvider & { userId: string }): Promise<Provider> {
-    const [newProvider] = await db.insert(providers).values(provider).returning();
-    return newProvider;
+    const [created] = await db
+      .insert(providers)
+      .values(provider)
+      .returning();
+    return created;
   }
 
   async updateProvider(userId: string, data: Partial<Provider>): Promise<Provider | undefined> {
-    const [updatedProvider] = await db
+    const [updated] = await db
       .update(providers)
       .set(data)
       .where(eq(providers.userId, userId))
       .returning();
-    return updatedProvider;
+    return updated || undefined;
   }
 
   async searchProviders(params: {
@@ -119,35 +115,57 @@ export class DatabaseStorage implements IStorage {
     longitude?: number;
     radius?: number;
   }): Promise<any[]> {
-    const whereClauses = [];
-
-    if (params.latitude && params.longitude && params.radius) {
-      // Placeholder for PostGIS search
-      // Example PostGIS query (requires PostGIS extension in Neon DB):
-      // const point = sql`ST_SetSRID(ST_MakePoint(${params.longitude}, ${params.latitude}), 4326)`;
-      // const distance = params.radius * 1000; // Assuming radius is in km, convert to meters
-      // whereClauses.push(sql`ST_DWithin(providers.location, ${point}, ${distance})`);
-    }
-
-    const results = await db
+    let query = db
       .select({
+        userId: providers.userId,
+        companyName: providers.companyName,
+        serviceCategories: providers.serviceCategories,
+        ratingAverage: providers.ratingAverage,
+        completedJobsCount: providers.completedJobsCount,
+        isOnline: providers.isOnline,
+        latitude: providers.latitude,
+        longitude: providers.longitude,
         user: users,
-        provider: providers,
       })
       .from(providers)
       .leftJoin(users, eq(providers.userId, users.id))
-      .where(and(...whereClauses));
+      .where(eq(providers.isOnline, true));
 
-    return results; // Further refinement needed to return a clean object
+    const results = await query;
+    return results.map((r) => ({ ...r.user, provider: { ...r, user: undefined } }));
   }
 
   // Jobs
   async getJob(id: string): Promise<any | undefined> {
     const [job] = await db
-      .select()
+      .select({
+        job: jobs,
+        requester: users,
+        category: categories,
+      })
       .from(jobs)
+      .leftJoin(users, eq(jobs.requesterId, users.id))
+      .leftJoin(categories, eq(jobs.categoryId, categories.id))
       .where(eq(jobs.id, id));
-    return job;
+
+    if (!job) return undefined;
+
+    // Get provider if assigned
+    let provider = null;
+    if (job.job.providerId) {
+      const [providerData] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, job.job.providerId));
+      provider = providerData;
+    }
+
+    return {
+      ...job.job,
+      requester: job.requester,
+      provider,
+      category: job.category,
+    };
   }
 
   async getJobs(params: {
@@ -156,67 +174,143 @@ export class DatabaseStorage implements IStorage {
     requesterId?: string;
     providerId?: string;
   }): Promise<any[]> {
-    // Placeholder logic for filtering jobs
-    const whereClauses = [];
-    if (params.status) whereClauses.push(eq(jobs.status, params.status as any));
-    if (params.requesterId) whereClauses.push(eq(jobs.requesterId, params.requesterId));
-    if (params.providerId) whereClauses.push(eq(jobs.providerId, params.providerId));
+    const conditions = [];
+
+    if (params.categoryId && params.categoryId !== 'all') {
+      conditions.push(eq(jobs.categoryId, parseInt(params.categoryId)));
+    }
+    if (params.status) {
+      conditions.push(eq(jobs.status, params.status as any));
+    }
+    if (params.requesterId) {
+      conditions.push(eq(jobs.requesterId, params.requesterId));
+    }
+    if (params.providerId) {
+      conditions.push(eq(jobs.providerId, params.providerId));
+    }
 
     const results = await db
-      .select()
+      .select({
+        job: jobs,
+        requester: users,
+        category: categories,
+      })
       .from(jobs)
-      .where(and(...whereClauses))
+      .leftJoin(users, eq(jobs.requesterId, users.id))
+      .leftJoin(categories, eq(jobs.categoryId, categories.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(jobs.createdAt));
 
-    return results;
+    return results.map((r) => ({
+      ...r.job,
+      requester: r.requester,
+      category: r.category,
+    }));
   }
 
-  async createJob(job: InsertJob & { requesterId: string }): Promise<Job> {
-    const [newJob] = await db.insert(jobs).values(job).returning();
-    return newJob;
+  async createJob(insertJob: InsertJob & { requesterId: string }): Promise<Job> {
+    const [job] = await db
+      .insert(jobs)
+      .values(insertJob)
+      .returning();
+    return job;
   }
 
   async updateJob(id: string, data: Partial<Job>): Promise<Job | undefined> {
-    const [updatedJob] = await db
+    const [updated] = await db
       .update(jobs)
-      .set(data)
+      .set({ ...data, updatedAt: new Date() })
       .where(eq(jobs.id, id))
       .returning();
-    return updatedJob;
+    return updated || undefined;
   }
 
   async acceptJob(jobId: string, providerId: string): Promise<Job | undefined> {
-    const [updatedJob] = await db
+    const [updated] = await db
       .update(jobs)
-      .set({ status: 'accepted', providerId: providerId })
+      .set({ 
+        providerId, 
+        status: 'accepted',
+        updatedAt: new Date() 
+      })
       .where(eq(jobs.id, jobId))
       .returning();
-    return updatedJob;
+    return updated || undefined;
   }
 
   // Messages
   async getMessages(jobId: string): Promise<any[]> {
-    return await db
-      .select()
+    const results = await db
+      .select({
+        message: messages,
+        sender: users,
+      })
       .from(messages)
+      .leftJoin(users, eq(messages.senderId, users.id))
       .where(eq(messages.jobId, jobId))
       .orderBy(asc(messages.createdAt));
+
+    return results.map((r) => ({
+      ...r.message,
+      sender: r.sender,
+    }));
   }
 
-  async createMessage(message: InsertMessage & { senderId: string }): Promise<Message> {
-    const [newMessage] = await db.insert(messages).values(message).returning();
-    return newMessage;
+  async createMessage(insertMessage: InsertMessage & { senderId: string }): Promise<Message> {
+    const [message] = await db
+      .insert(messages)
+      .values(insertMessage)
+      .returning();
+    return message;
   }
 
   async getConversations(userId: string): Promise<any[]> {
-    const results = await db
-      .select()
+    // Get all jobs where user is requester or provider
+    const userJobs = await db
+      .select({
+        job: jobs,
+        requester: users,
+      })
       .from(jobs)
-      .where(or(eq(jobs.requesterId, userId), eq(jobs.providerId, userId)))
-      .orderBy(desc(jobs.updatedAt));
-    
-    // This needs to join user names for proper conversation list, but I will keep the original logic.
-    return results; 
+      .leftJoin(users, eq(jobs.requesterId, users.id))
+      .where(
+        or(
+          eq(jobs.requesterId, userId),
+          eq(jobs.providerId, userId)
+        )
+      );
+
+    // For each job, get the last message
+    const conversations = [];
+    for (const { job, requester } of userJobs) {
+      const [lastMessage] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.jobId, job.id))
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+
+      if (lastMessage) {
+        const otherUserId = job.requesterId === userId ? job.providerId : job.requesterId;
+        if (otherUserId) {
+          const [otherUser] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, otherUserId));
+
+          conversations.push({
+            jobId: job.id,
+            jobTitle: job.title,
+            otherUser,
+            lastMessage: lastMessage.messageText,
+            lastMessageTime: lastMessage.createdAt,
+            unreadCount: 0, // TODO: Implement unread tracking
+          });
+        }
+      }
+    }
+
+    return conversations;
   }
 
   // Ratings
@@ -266,10 +360,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCategory(insertCategory: InsertCategory): Promise<Category> {
-    const [newCategory] = await db.insert(categories).values(insertCategory).returning();
-    return newCategory;
+    const [category] = await db
+      .insert(categories)
+      .values(insertCategory)
+      .returning();
+    return category;
   }
 }
 
-// Export a singleton instance for the rest of the application to use
 export const storage = new DatabaseStorage();
