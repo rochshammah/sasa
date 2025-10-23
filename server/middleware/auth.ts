@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// Validate JWT_SECRET exists
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable must be set');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export interface AuthRequest extends Request {
   user?: {
@@ -25,6 +30,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     req.user = decoded;
     next();
   } catch (error) {
+    console.error('JWT verification error:', error);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
