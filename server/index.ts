@@ -1,3 +1,5 @@
+// server/index.ts
+
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
@@ -14,6 +16,9 @@ if (!process.env.DATABASE_URL) {
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET must be set in environment variables");
 }
+
+// ⭐ FIX 1: Add JSON body-parsing middleware
+app.use(express.json()); 
 
 // CORS Configuration - Allow frontend domain
 const allowedOrigins = [
@@ -43,31 +48,18 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 }));
 
-declare module 'http' {
-  interface IncomingMessage {
-    rawBody: unknown
-  }
-}
 
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(express.urlencoded({ extended: false }));
-
-// Request logging middleware
-app.use((req, res, next) => {
+// Custom logging middleware (your existing code)
+app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  const path = req.originalUrl.split("?")[0];
+  const originalResJson = res.json.bind(res);
+  let capturedJsonResponse: any;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  res.json = (bodyJson: any, ...args: any[]) => {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
@@ -118,13 +110,9 @@ app.use((req, res, next) => {
     log('Database seed error: ' + (error as Error).message);
   }
 
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  // Start the server
+  const port = process.env.PORT || 3000;
+  server.listen(port, () => {
     log(`Server running on port ${port}`);
-    log(`Environment: ${app.get("env")}`);
   });
 })();
