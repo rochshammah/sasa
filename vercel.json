@@ -8,12 +8,12 @@
   "framework": null,
   "rewrites": [
     {
+      /* ⭐️ CRITICAL FIX: Add this rule to forward all /api requests to Render */
       "source": "/api/(.*)",
-      "destination": "YOUR_RENDER_BACKEND_URL/api/$1" 
-      /* ⭐️ IMPORTANT: REPLACE 'YOUR_RENDER_BACKEND_URL' with your actual Render API URL 
-         (e.g., https://jobtradesasa-api-xxxxx.onrender.com) 
-      */
+      "destination": "postgresql://jobtradesasa_user:OOkw3rIKBUsxPg8Upy4LUCCCRXpnEhpa@dpg-d3sbneeuk2gs73c3t8ng-a/jobtradesasa" 
+      /* E.g., "https://jobtradesasa-api.onrender.com/api/$1" */
     },
+    /* Keep all your original rewrites after the API rule */
     {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
