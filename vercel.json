@@ -8,6 +8,13 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "YOUR_RENDER_BACKEND_URL/api/$1" 
+      /* ⭐️ IMPORTANT: REPLACE 'YOUR_RENDER_BACKEND_URL' with your actual Render API URL 
+         (e.g., https://jobtradesasa-api-xxxxx.onrender.com) 
+      */
+    },
+    {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
