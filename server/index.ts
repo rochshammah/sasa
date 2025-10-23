@@ -17,9 +17,6 @@ if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET must be set in environment variables");
 }
 
-// ⭐ FIX 1: Add JSON body-parsing middleware
-app.use(express.json()); 
-
 // CORS Configuration - Allow frontend domain
 const allowedOrigins = [
   'http://localhost:5173',
@@ -51,6 +48,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
 }));
 
+// ⭐ FIX 1: Add JSON body-parsing middleware
+app.use(express.json()); 
 
 // Custom logging middleware (your existing code)
 app.use((req: Request, res: Response, next: NextFunction) => {
