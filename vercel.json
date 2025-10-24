@@ -3,6 +3,7 @@
   "name": "jobtradesasa-frontend",
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
+  "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": null,
   "rewrites": [
@@ -11,7 +12,7 @@
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
-   
+    
     {
       "source": "/favicon.png",
       "destination": "/favicon.png"
@@ -32,7 +33,7 @@
       "source": "/service-worker.js",
       "destination": "/service-worker.js"
     },
- 
+    // 3. SPA Catch-all: This must be the absolute last rule for all remaining client-side routes.
     {
       "source": "/(.*)",
       "destination": "/index.html"
