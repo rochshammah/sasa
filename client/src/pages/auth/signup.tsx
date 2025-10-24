@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
-import { apiRequest } from '@/lib/queryClient'; // <--- ADDED IMPORT
+import { apiRequest } from '@/lib/queryClient';
 
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -48,12 +48,9 @@ export default function Signup() {
   const onSubmit = async (data: SignupForm) => {
     setIsLoading(true);
     try {
-      const { confirmPassword, ...signupData } = data;
-      
-      // FIX: Replaced fetch with apiRequest to target the external Render URL
-      const response = await apiRequest('POST', '/api/auth/signup', signupData); 
-
-      // Note: apiRequest already handles non-200 responses by throwing an error
+      // FIX: Send the entire 'data' object. 
+      // The backend now expects 'confirmPassword' for validation.
+      const response = await apiRequest('POST', '/api/auth/signup', data); 
       
       const result = await response.json();
       localStorage.setItem('token', result.token);
@@ -67,9 +64,15 @@ export default function Signup() {
 
       setLocation(result.user.role === 'provider' ? '/dashboard' : '/jobs');
     } catch (error: any) {
+      // Improved error handling for the 400 Bad Request
+      let message = error.message || 'An unknown error occurred.';
+      if (error.message && error.message.startsWith('400:')) {
+        message = error.message.substring(4).trim();
+      }
+
       toast({
         title: 'Signup failed',
-        description: error.message || 'An unknown error occurred.', 
+        description: message,
         variant: 'destructive',
       });
     } finally {
