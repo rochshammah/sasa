@@ -3,13 +3,26 @@
   "name": "jobtradesasa-frontend",
   "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
-  "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": null,
   "rewrites": [
+    // This handles the JavaScript chunks and other hashed assets (e.g., from Vite's build)
     {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
+    },
+    // ADDED: Explicit rules for root-level PWA and favicon assets
+    {
+      "source": "/favicon.png",
+      "destination": "/favicon.png"
+    },
+    {
+      "source": "/icon-192.png",
+      "destination": "/icon-192.png"
+    },
+    {
+      "source": "/icon-512.png",
+      "destination": "/icon-512.png"
     },
     {
       "source": "/manifest.json",
@@ -19,6 +32,7 @@
       "source": "/service-worker.js",
       "destination": "/service-worker.js"
     },
+    // SPA Catch-all: This must be the absolute last rule to handle all routes not matching a file.
     {
       "source": "/(.*)",
       "destination": "/index.html"
