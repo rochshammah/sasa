@@ -35,7 +35,6 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      // Log the request data for debugging
       console.log('Sending login request:', data);
 
       const response = await fetch('/api/auth/login', {
@@ -47,6 +46,9 @@ export default function Login() {
       if (!response.ok) {
         const error = await response.json();
         console.error('Login error response:', error);
+        if (response.status === 405) {
+          throw new Error('Server does not allow login requests. Please contact support.');
+        }
         throw new Error(error.message || 'Login failed');
       }
 
