@@ -7,12 +7,16 @@
   "installCommand": "npm install",
   "framework": null,
   "rewrites": [
-   
+ 
     {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
-    
+ 
+    {
+      "source": "/(index-\\w+\\.\\w+)",
+      "destination": "/$1"
+    }, 
     {
       "source": "/favicon.png",
       "destination": "/favicon.png"
@@ -33,7 +37,7 @@
       "source": "/service-worker.js",
       "destination": "/service-worker.js"
     },
-    
+ 
     {
       "source": "/(.*)",
       "destination": "/index.html"
