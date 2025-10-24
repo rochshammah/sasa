@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import bcrypt from "bcrypt";
+import cors from "cors"; // Added for CORS support
 import { storage } from "./storage";
 import { authMiddleware, generateToken, type AuthRequest } from "./middleware/auth";
 import { 
@@ -15,6 +16,13 @@ import {
 import { ZodError } from 'zod'; 
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Add CORS middleware
+  app.use(cors({
+    origin: process.env.VERCEL_URL || 'https://sasa-indol.vercel.app', // Adjust to your frontend URL
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time chat
@@ -113,10 +121,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/auth/login', async (req, res) => {
+    console.log('Received login request:', req.body); // Log request for debugging
     try {
       const { email, password } = req.body;
 
-      // Validate request body
       if (!email || !password) {
         console.error('Login failed: Missing email or password', { email, password });
         return res.status(400).json({ message: 'Email and password are required' });
