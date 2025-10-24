@@ -45,9 +45,15 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((response) => {
           const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+          
+          // START FIX: Only attempt to cache if the request method is GET.
+          if (event.request.method === 'GET') {
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          // END FIX
+          
           return response;
         })
         .catch(() => {
