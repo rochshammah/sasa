@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { authMiddleware, generateToken, type AuthRequest } from "./middleware/auth";
 import { insertUserSchema, insertJobSchema, insertMessageSchema, insertRatingSchema } from "@shared/schema";
+import { ZodError } from 'zod'; // <--- ADDED
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -96,6 +97,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash: _, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword, token });
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.issues });
+      }
       res.status(400).json({ message: error.message || 'Signup failed' });
     }
   });
@@ -132,11 +136,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const { category, status, sort } = req.query;
+      const params: any = {};
       
-      const jobs = await storage.getJobs({
-        categoryId: category as string,
-        status: status as string,
-      });
+      if (category && category !== 'all') {
+        params.categoryId = category as string;
+      }
+      if (status) {
+        params.status = status as string;
+      }
+
+      let jobs = await storage.getJobs(params);
+
+      // Sort jobs based on query parameter
+      if (sort === 'urgent') {
+        jobs = jobs.sort((a, b) => {
+          if (a.urgency === 'emergency' && b.urgency !== 'emergency') return -1;
+          if (a.urgency !== 'emergency' && b.urgency === 'emergency') return 1;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // Fallback to recent
+        });
+      } else if (sort === 'recent') {
+        jobs = jobs.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      }
+      // Note: 'distance' sort is not fully implemented on the backend as PostGIS/geolocation filters are mocked.
 
       res.json(jobs);
     } catch (error: any) {
@@ -147,9 +170,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const job = await storage.getJob(req.params.id);
+      
       if (!job) {
         return res.status(404).json({ message: 'Job not found' });
       }
+
       res.json(job);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -165,19 +190,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         requesterId: req.user!.id,
       });
 
-      res.json(job);
+      res.status(201).json(job);
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.issues });
+      }
       res.status(400).json({ message: error.message });
     }
   });
 
   app.patch('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const job = await storage.updateJob(req.params.id, req.body);
-      if (!job) {
+      const { status } = req.body;
+      const updated = await storage.updateJob(req.params.id, { status });
+
+      if (!updated) {
         return res.status(404).json({ message: 'Job not found' });
       }
-      res.json(job);
+
+      res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -190,8 +221,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const job = await storage.acceptJob(req.params.id, req.user!.id);
+      
       if (!job) {
-        return res.status(404).json({ message: 'Job not found' });
+        return res.status(404).json({ message: 'Job not found or already accepted' });
       }
 
       res.json(job);
@@ -204,14 +236,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/providers', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const { category, lat, lng, radius } = req.query;
+      const { categoryId, latitude, longitude, radius } = req.query;
       
-      const providers = await storage.searchProviders({
-        categoryId: category ? parseInt(category as string) : undefined,
-        latitude: lat ? parseFloat(lat as string) : undefined,
-        longitude: lng ? parseFloat(lng as string) : undefined,
-        radius: radius ? parseInt(radius as string) : undefined,
-      });
+      const params: any = {};
+      if (categoryId) params.categoryId = parseInt(categoryId as string);
+      if (latitude) params.latitude = parseFloat(latitude as string);
+      if (longitude) params.longitude = parseFloat(longitude as string);
+      if (radius) params.radius = parseInt(radius as string);
+
+      const providers = await storage.searchProviders(params);
 
       res.json(providers);
     } catch (error: any) {
@@ -225,27 +258,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Only providers can access stats' });
       }
 
-      const provider = await storage.getProvider(req.user!.id);
-      if (!provider) {
-        return res.status(404).json({ message: 'Provider profile not found' });
-      }
+      // Using mock stats for this endpoint as per instructions
+      const stats = {
+        totalEarnings: 5240,
+        completedJobs: 87,
+        averageRating: 4.8,
+        avgResponseTime: 12,
+      };
 
-      // Get provider's jobs
-      const jobs = await storage.getJobs({
-        providerId: req.user!.id,
-      });
-
-      const completedJobs = jobs.filter((j) => j.status === 'completed');
-      const totalEarnings = completedJobs.reduce((sum, j) => {
-        return sum + (parseFloat(j.pricePaid || '0'));
-      }, 0);
-
-      res.json({
-        totalEarnings,
-        completedJobs: completedJobs.length,
-        averageRating: parseFloat(provider.ratingAverage || '0'),
-        avgResponseTime: provider.averageResponseTimeSeconds || 0,
-      });
+      res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -257,11 +278,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Only providers can access this' });
       }
 
-      const jobs = await storage.getJobs({
-        providerId: req.user!.id,
-      });
-
-      res.json(jobs.slice(0, 10));
+      const jobs = await storage.getJobs({ providerId: req.user!.id });
+      const recentJobs = jobs.slice(0, 10);
+      res.json(recentJobs);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -296,8 +315,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         senderId: req.user!.id,
       });
 
-      res.json(message);
+      res.status(201).json(message);
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.issues });
+      }
       res.status(400).json({ message: error.message });
     }
   });
@@ -349,6 +371,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(rating);
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: 'Validation failed', errors: error.issues });
+      }
       res.status(400).json({ message: error.message });
     }
   });
