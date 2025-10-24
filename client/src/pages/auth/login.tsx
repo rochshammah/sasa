@@ -35,6 +35,9 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
+      // Log the request data for debugging
+      console.log('Sending login request:', data);
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,10 +46,13 @@ export default function Login() {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('Login error response:', error);
         throw new Error(error.message || 'Login failed');
       }
 
       const result = await response.json();
+      console.log('Login success response:', result);
+
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
       setUser(result.user);
@@ -58,9 +64,10 @@ export default function Login() {
 
       setLocation(result.user.role === 'provider' ? '/dashboard' : '/jobs');
     } catch (error: any) {
+      console.error('Login failed:', error);
       toast({
         title: 'Login failed',
-        description: error.message,
+        description: error.message || 'An unexpected error occurred',
         variant: 'destructive',
       });
     } finally {
