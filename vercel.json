@@ -6,12 +6,12 @@
   "installCommand": "npm install",
   "framework": null,
   "rewrites": [
-    
+   
     {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
-    
+   
     {
       "source": "/favicon.png",
       "destination": "/favicon.png"
@@ -32,7 +32,7 @@
       "source": "/service-worker.js",
       "destination": "/service-worker.js"
     },
-    // SPA Catch-all: This must be the absolute last rule to handle all routes not matching a file.
+ 
     {
       "source": "/(.*)",
       "destination": "/index.html"
