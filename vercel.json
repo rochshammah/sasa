@@ -6,12 +6,12 @@
   "installCommand": "npm install",
   "framework": null,
   "rewrites": [
-    // This handles the JavaScript chunks and other hashed assets (e.g., from Vite's build)
+    
     {
       "source": "/assets/(.*)",
       "destination": "/assets/$1"
     },
-    // ADDED: Explicit rules for root-level PWA and favicon assets
+    
     {
       "source": "/favicon.png",
       "destination": "/favicon.png"
