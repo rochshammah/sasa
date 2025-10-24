@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed";
+import cors from "cors"; // <--- ADDED
 
 const app = express();
 
@@ -16,6 +17,17 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+// ADDED CORS CONFIGURATION
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5000',
+    'https://your-vercel-domain.vercel.app' // NOTE: Replace with your actual Vercel domain
+  ],
+  credentials: true
+}));
+// END ADDED CORS CONFIGURATION
 
 app.use((req, res, next) => {
   const start = Date.now();
