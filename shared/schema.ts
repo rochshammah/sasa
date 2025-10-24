@@ -76,9 +76,9 @@ export const jobs = pgTable("jobs", {
   categoryId: integer("category_id").notNull().references(() => categories.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  photos: jsonb("photos").$type<string[]>(),
-  latitude: numeric("latitude", { precision: 10, scale: 7 }).notNull(),
-  longitude: numeric("longitude", { precision: 10, scale: 7 }).notNull(),
+  photos: jsonb("photos").$type<string[]>().default([]),
+  latitude: text("latitude").notNull(), // Changed to text to match frontend
+  longitude: text("longitude").notNull(), // Changed to text to match frontend
   address: text("address"),
   urgency: urgencyEnum("urgency").default("normal").notNull(),
   preferredTime: timestamp("preferred_time"),
@@ -94,7 +94,7 @@ export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom(),
   jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
   senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  messageText: text("message_text"),
+  messageText: text("message_text").notNull(),
   attachments: jsonb("attachments").$type<string[]>(),
   voiceNoteUrl: text("voice_note_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -198,70 +198,89 @@ export const ratingsRelations = relations(ratings, ({ one }) => ({
   }),
 }));
 
-// Insert schemas
+// ============ SCHEMAS ============
 
-// Base schema omits internal/generated fields and the db hash field
+// User Schemas
 export const baseUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
   isVerified: true,
-  passwordHash: true, // <--- CRUCIAL: Omit the database's required field
+  passwordHash: true,
 });
 
-// Schema for client request (includes plaintext password and confirmation)
+// Schema for signup request from frontend
 export const createUserRequestSchema = baseUserSchema.extend({
   password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string(), // Client-side field
+  confirmPassword: z.string(),
 });
 
+// Legacy schema - kept for compatibility
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
   isVerified: true,
-}).extend({
-  // Note: This insert schema is now deprecated as it assumes the DB shape
-  // and includes password in validation, but is kept for compatibility with existing
-  // code that might still import it. However, we'll replace its usage in routes.ts
-  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-
+// Provider Schema
 export const insertProviderSchema = createInsertSchema(providers).omit({
   userId: true,
 });
 
-export const insertJobSchema = createInsertSchema(jobs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  requesterId: true,
-  providerId: true,
-  status: true,
+// Job Schema - matches frontend exactly
+export const insertJobSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Description is required"),
+  categoryId: z.number().int().positive(),
+  latitude: z.string(), // Frontend sends as string
+  longitude: z.string(), // Frontend sends as string
+  address: z.string().optional(),
+  urgency: z.enum(["normal", "emergency"]).default("normal"),
+  preferredTime: z.union([z.string(), z.date()]).optional().transform(val => {
+    if (!val) return undefined;
+    return val instanceof Date ? val : new Date(val);
+  }),
+  photos: z.array(z.string()).optional().default([]),
 });
 
-export const insertMessageSchema = createInsertSchema(messages).omit({
-  id: true,
-  createdAt: true,
-  senderId: true,
+// Message Schema - matches frontend
+export const insertMessageSchema = z.object({
+  jobId: z.string().uuid(),
+  messageText: z.string().min(1, "Message cannot be empty"),
+  attachments: z.array(z.string()).optional(),
+  voiceNoteUrl: z.string().optional(),
 });
 
-export const insertRatingSchema = createInsertSchema(ratings).omit({
-  id: true,
-  createdAt: true,
-  fromUserId: true,
-}).extend({
+// Rating Schema
+export const insertRatingSchema = z.object({
+  jobId: z.string().uuid(),
+  toUserId: z.string().uuid(),
   rating: z.number().min(1).max(5),
+  comment: z.string().optional(),
 });
 
+// Category Schema
 export const insertCategorySchema = createInsertSchema(categories).omit({
   id: true,
 });
 
-// Types
+// Update Profile Schema - matches frontend
+export const updateProfileSchema = z.object({
+  name: z.string().min(2).optional(),
+  phone: z.string().optional(),
+  bio: z.string().optional(),
+});
+
+// Update Job Status Schema
+export const updateJobStatusSchema = z.object({
+  status: z.enum(["open", "offered", "accepted", "enroute", "onsite", "completed", "cancelled"]),
+});
+
+// ============ TYPES ============
+
 export type User = typeof users.$inferSelect;
-// Updated export type for incoming request data
+export type InsertUser = typeof users.$inferInsert;
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
 export type Provider = typeof providers.$inferSelect;
@@ -280,3 +299,6 @@ export type Category = typeof categories.$inferSelect;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 
 export type Promotion = typeof promotions.$inferSelect;
+
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;
+export type UpdateJobStatus = z.infer<typeof updateJobStatusSchema>;
