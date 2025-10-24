@@ -18,18 +18,27 @@ export default function JobDetail() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const { data: job, isLoading } = useQuery<Job & { requester: any; provider: any; category: any }>({
-    queryKey: ['/api/jobs', params?.id],
-    enabled: !!params?.id,
+  // Ensure jobId is a string or undefined
+  const jobId = params?.id;
+
+  const { data: job, isLoading, error } = useQuery<Job & { requester: any; provider: any; category: any }>({
+    queryKey: ['job', jobId], // Simplified query key to avoid object issues
+    queryFn: async () => {
+      if (!jobId) throw new Error('Job ID is missing');
+      const response = await apiRequest('GET', `/api/jobs/${jobId}`);
+      return response.json();
+    },
+    enabled: !!jobId, // Only fetch if jobId exists
   });
 
   const acceptJobMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('POST', `/api/jobs/${params?.id}/accept`, {});
+      if (!jobId) throw new Error('Job ID is missing');
+      const res = await apiRequest('POST', `/api/jobs/${jobId}/accept`, {});
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/jobs', params?.id] });
+      queryClient.invalidateQueries({ queryKey: ['job', jobId] });
       toast({
         title: 'Job accepted!',
         description: 'You can now start working on this job.',
@@ -39,11 +48,12 @@ export default function JobDetail() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async (status: string) => {
-      const res = await apiRequest('PATCH', `/api/jobs/${params?.id}`, { status });
+      if (!jobId) throw new Error('Job ID is missing');
+      const res = await apiRequest('PATCH', `/api/jobs/${jobId}`, { status });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/jobs', params?.id] });
+      queryClient.invalidateQueries({ queryKey: ['job', jobId] });
       toast({
         title: 'Status updated',
         description: 'Job status has been updated successfully.',
@@ -68,12 +78,12 @@ export default function JobDetail() {
     );
   }
 
-  if (!job) {
+  if (error || !job) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <Card>
           <CardContent className="p-12 text-center">
-            <p className="text-muted-foreground">Job not found</p>
+            <p className="text-muted-foreground">{error ? error.message : 'Job not found'}</p>
           </CardContent>
         </Card>
       </div>
