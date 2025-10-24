@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
+import { apiRequest } from '@/lib/queryClient'; // <--- ADDED IMPORT
 
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -48,17 +49,12 @@ export default function Signup() {
     setIsLoading(true);
     try {
       const { confirmPassword, ...signupData } = data;
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signupData),
-      });
+      
+      // FIX: Replaced fetch with apiRequest to target the external Render URL
+      const response = await apiRequest('POST', '/api/auth/signup', signupData); 
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Signup failed');
-      }
-
+      // Note: apiRequest already handles non-200 responses by throwing an error
+      
       const result = await response.json();
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
@@ -73,7 +69,7 @@ export default function Signup() {
     } catch (error: any) {
       toast({
         title: 'Signup failed',
-        description: error.message,
+        description: error.message || 'An unknown error occurred.', 
         variant: 'destructive',
       });
     } finally {
