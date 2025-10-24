@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'wouter';
 import type { Job, Category } from '@shared/schema';
+import { apiRequest } from '@/lib/queryClient';
 
 export default function BrowseJobs() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,11 +17,24 @@ export default function BrowseJobs() {
   const [sortBy, setSortBy] = useState<string>('recent');
 
   const { data: jobs, isLoading: jobsLoading } = useQuery<(Job & { requester: any; category: Category })[]>({
-    queryKey: ['/api/jobs', { category: selectedCategory, sort: sortBy }],
+    queryKey: ['jobs', { category: selectedCategory, sort: sortBy }],
+    queryFn: async () => {
+      let url = '/api/jobs';
+      const params = new URLSearchParams();
+      if (selectedCategory !== 'all') {
+        params.append('category', selectedCategory);
+      }
+      params.append('sort', sortBy);
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      const response = await apiRequest('GET', url);
+      return response.json();
+    },
   });
 
   const { data: categories } = useQuery<Category[]>({
-    queryKey: ['/api/categories'],
+    queryKey: ['categories'],
   });
 
   const filteredJobs = jobs?.filter((job) =>
