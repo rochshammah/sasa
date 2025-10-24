@@ -4,8 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { authMiddleware, generateToken, type AuthRequest } from "./middleware/auth";
-import { insertUserSchema, insertJobSchema, insertMessageSchema, insertRatingSchema } from "@shared/schema";
-import { ZodError } from 'zod'; // <--- ADDED
+import { insertJobSchema, insertMessageSchema, insertRatingSchema, createUserRequestSchema } from "@shared/schema"; // <--- UPDATED IMPORT
+import { ZodError } from 'zod'; 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -61,21 +61,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/auth/signup', async (req, res) => {
     try {
-      const validatedData = insertUserSchema.parse(req.body);
+      // 1. Validate the incoming request data (which includes password and confirmPassword)
+      const rawValidatedData = createUserRequestSchema.parse(req.body);
       
+      // Separate password fields from user data for DB insertion
+      const { password, confirmPassword, ...userData } = rawValidatedData;
+      
+      // 2. Perform server-side password match check
+      if (password !== confirmPassword) {
+         // Return a dedicated error if passwords don't match
+         return res.status(400).json({ message: "Passwords do not match." });
+      }
+
       // Check if user exists
-      const existingUser = await storage.getUserByEmail(validatedData.email);
+      const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(400).json({ message: 'User already exists' });
       }
 
-      // Hash password
-      const passwordHash = await bcrypt.hash(validatedData.password, 10);
+      // 3. Hash password
+      const passwordHash = await bcrypt.hash(password, 10);
 
-      // Create user
+      // 4. Create user with the hashed password
       const user = await storage.createUser({
-        ...validatedData,
-        passwordHash,
+        ...userData,
+        passwordHash, // <--- This field is now correctly populated
       });
 
       // Create provider profile if role is provider
@@ -98,6 +108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ user: userWithoutPassword, token });
     } catch (error: any) {
       if (error instanceof ZodError) {
+        // Zod validation errors should return 400
         return res.status(400).json({ message: 'Validation failed', errors: error.issues });
       }
       res.status(400).json({ message: error.message || 'Signup failed' });
