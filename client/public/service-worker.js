@@ -10,7 +10,10 @@ const urlsToCache = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log('Caching static assets');
       return cache.addAll(urlsToCache);
+    }).catch((error) => {
+      console.error('Cache installation failed:', error);
     })
   );
   self.skipWaiting();
@@ -23,10 +26,13 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).catch((error) => {
+      console.error('Cache cleanup failed:', error);
     })
   );
   self.clients.claim();
@@ -39,25 +45,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API requests - network first, cache fallback
+  // API requests - network first, cache fallback for GET requests
   if (event.request.url.includes('/api/')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const responseClone = response.clone();
-          
-          // START FIX: Only attempt to cache if the request method is GET.
-          if (event.request.method === 'GET') {
+          // Only cache successful GET responses
+          if (event.request.method === 'GET' && response.ok) {
+            const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseClone);
+            }).catch((error) => {
+              console.error('Cache put failed:', error);
             });
           }
-          // END FIX
-          
           return response;
         })
-        .catch(() => {
-          return caches.match(event.request);
+        .catch((error) => {
+          console.error('Network fetch failed:', error);
+          return caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            throw new Error('Network and cache fetch failed');
+          });
         })
     );
     return;
@@ -66,7 +77,13 @@ self.addEventListener('fetch', (event) => {
   // Static assets - cache first, network fallback
   event.respondWith(
     caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+      if (response) {
+        return response;
+      }
+      return fetch(event.request).catch((error) => {
+        console.error('Static asset fetch failed:', error);
+        throw error;
+      });
     })
   );
 });
