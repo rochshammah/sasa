@@ -35,13 +35,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             clients.set(userId, ws);
           }
         } else if (data.type === 'message' && userId) {
-          // Broadcast to other user in conversation
           const msg = await storage.createMessage({
             ...data.payload,
             senderId: userId,
           });
 
-          // Get job to find other user
           const job = await storage.getJob(data.payload.jobId);
           const otherUserId = job.requesterId === userId ? job.providerId : job.requesterId;
 
@@ -68,33 +66,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/auth/signup', async (req, res) => {
     try {
-      // Validate the incoming request data
       const rawValidatedData = createUserRequestSchema.parse(req.body);
-      
-      // Separate password fields from user data
       const { password, confirmPassword, ...userData } = rawValidatedData;
       
-      // Server-side password match check
       if (password !== confirmPassword) {
         return res.status(400).json({ message: "Passwords do not match." });
       }
 
-      // Check if user exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(400).json({ message: 'User already exists' });
       }
 
-      // Hash password
       const passwordHash = await bcrypt.hash(password, 10);
-
-      // Create user with hashed password
       const user = await storage.createUser({
         ...userData,
         passwordHash,
       });
 
-      // Create provider profile if role is provider
       if (user.role === 'provider') {
         await storage.createProvider({
           userId: user.id,
@@ -103,7 +92,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Generate token
       const token = generateToken({
         id: user.id,
         email: user.email,
@@ -119,6 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Signup error:', error);
       res.status(400).json({ message: error.message || 'Signup failed' });
     }
   });
@@ -127,13 +116,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
 
+      // Validate request body
+      if (!email || !password) {
+        console.error('Login failed: Missing email or password', { email, password });
+        return res.status(400).json({ message: 'Email and password are required' });
+      }
+
       const user = await storage.getUserByEmail(email);
       if (!user) {
+        console.error('Login failed: User not found', { email });
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
       const isValid = await bcrypt.compare(password, user.passwordHash);
       if (!isValid) {
+        console.error('Login failed: Invalid password', { email });
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
@@ -144,9 +141,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const { passwordHash: _, ...userWithoutPassword } = user;
+      console.log('Login successful:', { userId: user.id, email });
       res.json({ user: userWithoutPassword, token });
     } catch (error: any) {
-      res.status(400).json({ message: error.message || 'Login failed' });
+      console.error('Login error:', error);
+      res.status(500).json({ message: error.message || 'Login failed' });
     }
   });
 
@@ -166,7 +165,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let jobs = await storage.getJobs(params);
 
-      // Sort jobs based on query parameter
       if (sort === 'urgent') {
         jobs = jobs.sort((a, b) => {
           if (a.urgency === 'emergency' && b.urgency !== 'emergency') return -1;
@@ -178,17 +176,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
       } else if (sort === 'distance') {
-        // Mock distance sort - in real app, calculate based on user location
         jobs = jobs.sort(() => Math.random() - 0.5);
       }
 
       res.json(jobs);
     } catch (error: any) {
+      console.error('Get jobs error:', error);
       res.status(500).json({ message: error.message });
     }
   });
 
-  // Added missing route for fetching a single job by ID
   app.get('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const job = await storage.getJob(req.params.id);
@@ -197,6 +194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(job);
     } catch (error: any) {
+      console.error('Get job error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -208,7 +206,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const validatedData = insertJobSchema.parse(req.body);
-
       const job = await storage.createJob({
         ...validatedData,
         requesterId: req.user!.id,
@@ -222,6 +219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Create job error:', error);
       res.status(400).json({ message: error.message });
     }
   });
@@ -229,7 +227,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const validatedData = updateJobStatusSchema.parse(req.body);
-
       const job = await storage.updateJob(req.params.id, validatedData);
 
       if (!job) {
@@ -244,6 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Update job error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -262,6 +260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(job);
     } catch (error: any) {
+      console.error('Accept job error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -271,7 +270,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/providers', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const { categoryId, latitude, longitude, radius } = req.query;
-      
       const params: any = {};
       if (categoryId) params.categoryId = parseInt(categoryId as string);
       if (latitude) params.latitude = parseFloat(latitude as string);
@@ -279,9 +277,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (radius) params.radius = parseInt(radius as string);
 
       const providers = await storage.searchProviders(params);
-
       res.json(providers);
     } catch (error: any) {
+      console.error('Get providers error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -292,7 +290,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Only providers can access stats' });
       }
 
-      // Mock stats for demo
       const stats = {
         totalEarnings: 5240,
         completedJobs: 87,
@@ -302,6 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(stats);
     } catch (error: any) {
+      console.error('Get provider stats error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -316,6 +314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const recentJobs = jobs.slice(0, 10);
       res.json(recentJobs);
     } catch (error: any) {
+      console.error('Get recent jobs error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -327,6 +326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const conversations = await storage.getConversations(req.user!.id);
       res.json(conversations);
     } catch (error: any) {
+      console.error('Get conversations error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -336,15 +336,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const messages = await storage.getMessages(req.params.jobId);
       res.json(messages);
     } catch (error: any) {
+      console.error('Get messages error:', error);
       res.status(500).json({ message: error.message });
     }
   });
 
   app.post('/api/messages', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      // Validate message data
       const validatedData = insertMessageSchema.parse(req.body);
-      
       const message = await storage.createMessage({
         ...validatedData,
         senderId: req.user!.id,
@@ -358,6 +357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Create message error:', error);
       res.status(400).json({ message: error.message });
     }
   });
@@ -366,9 +366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/profile', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      // Validate profile update data
       const validatedData = updateProfileSchema.parse(req.body);
-      
       const updated = await storage.updateUser(req.user!.id, validatedData);
 
       if (!updated) {
@@ -384,6 +382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Update profile error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -393,8 +392,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/categories', async (req, res) => {
     try {
       const categories = await storage.getCategories();
-      res.json(cities);
+      res.json(categories);
     } catch (error: any) {
+      console.error('Get categories error:', error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -404,7 +404,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ratings', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const validatedData = insertRatingSchema.parse(req.body);
-      
       const rating = await storage.createRating({
         ...validatedData,
         fromUserId: req.user!.id,
@@ -418,6 +417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
         });
       }
+      console.error('Create rating error:', error);
       res.status(400).json({ message: error.message });
     }
   });
@@ -427,6 +427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const ratings = await storage.getProviderRatings(req.params.providerId);
       res.json(ratings);
     } catch (error: any) {
+      console.error('Get ratings error:', error);
       res.status(500).json({ message: error.message });
     }
   });
