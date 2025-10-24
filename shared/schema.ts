@@ -199,14 +199,34 @@ export const ratingsRelations = relations(ratings, ({ one }) => ({
 }));
 
 // Insert schemas
+
+// Base schema omits internal/generated fields and the db hash field
+export const baseUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  isVerified: true,
+  passwordHash: true, // <--- CRUCIAL: Omit the database's required field
+});
+
+// Schema for client request (includes plaintext password and confirmation)
+export const createUserRequestSchema = baseUserSchema.extend({
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(), // Client-side field
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
   isVerified: true,
 }).extend({
+  // Note: This insert schema is now deprecated as it assumes the DB shape
+  // and includes password in validation, but is kept for compatibility with existing
+  // code that might still import it. However, we'll replace its usage in routes.ts
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
+
 
 export const insertProviderSchema = createInsertSchema(providers).omit({
   userId: true,
@@ -241,7 +261,8 @@ export const insertCategorySchema = createInsertSchema(categories).omit({
 
 // Types
 export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
+// Updated export type for incoming request data
+export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
 export type Provider = typeof providers.$inferSelect;
 export type InsertProvider = z.infer<typeof insertProviderSchema>;
