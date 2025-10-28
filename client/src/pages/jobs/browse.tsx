@@ -1,3 +1,4 @@
+// In client/src/pages/jobs/browse.tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, Filter, SlidersHorizontal, Star, Clock, CheckCircle2 } from 'lucide-react';
@@ -8,10 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'wouter';
+import { useAuth } from '@/lib/auth-context';
 import type { Job, Category } from '@shared/schema';
 import { apiRequest } from '@/lib/queryClient';
 
 export default function BrowseJobs() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('recent');
@@ -42,12 +45,25 @@ export default function BrowseJobs() {
     job.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Determine page title based on user role
+  const pageTitle = user?.role === 'requester' 
+    ? 'My Jobs' 
+    : user?.role === 'provider' 
+    ? 'Available Jobs' 
+    : 'Browse Jobs';
+
+  const pageDescription = user?.role === 'requester'
+    ? 'Manage your service requests'
+    : user?.role === 'provider'
+    ? 'Find service requests near you'
+    : 'Find service requests near you';
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Browse Jobs</h1>
-        <p className="text-muted-foreground">Find service requests near you</p>
+        <h1 className="text-3xl font-bold mb-2">{pageTitle}</h1>
+        <p className="text-muted-foreground">{pageDescription}</p>
       </div>
 
       {/* Filters */}
@@ -82,7 +98,9 @@ export default function BrowseJobs() {
               <SelectContent>
                 <SelectItem value="recent">Most Recent</SelectItem>
                 <SelectItem value="urgent">Urgent First</SelectItem>
-                <SelectItem value="distance">Nearest</SelectItem>
+                {user?.role === 'provider' && (
+                  <SelectItem value="distance">Nearest</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -134,16 +152,19 @@ export default function BrowseJobs() {
                         <Badge variant="outline" className="text-xs">
                           {job.category?.name || 'Uncategorized'}
                         </Badge>
-                        {job.status === 'open' ? (
-                          <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/20">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            Open
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">
-                            {job.status}
-                          </Badge>
-                        )}
+                        <Badge 
+                          variant="outline" 
+                          className={`text-xs ${
+                            job.status === 'open' 
+                              ? 'bg-success/10 text-success border-success/20'
+                              : job.status === 'completed'
+                              ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                              : ''
+                          }`}
+                        >
+                          {job.status === 'open' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                          {job.status}
+                        </Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -160,11 +181,21 @@ export default function BrowseJobs() {
                 <Filter className="h-8 w-8 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold mb-2">No jobs found</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  {user?.role === 'requester' ? 'No jobs posted yet' : 'No jobs found'}
+                </h3>
                 <p className="text-muted-foreground">
-                  Try adjusting your filters or search query
+                  {user?.role === 'requester' 
+                    ? 'Create your first job request to get started'
+                    : 'Try adjusting your filters or check back later'
+                  }
                 </p>
               </div>
+              {user?.role === 'requester' && (
+                <Link href="/post-job">
+                  <Button>Post Your First Job</Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>
