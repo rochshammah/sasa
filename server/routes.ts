@@ -159,54 +159,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ==================== JOB ROUTES ====================
 
-  app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const { category, status, sort } = req.query;
-      const params: any = {};
-      
-      if (category && category !== 'all') {
-        params.categoryId = category as string;
-      }
-      if (status) {
-        params.status = status as string;
-      }
+  // In server/routes.ts - Update the GET /api/jobs endpoint
 
-      let jobs = await storage.getJobs(params);
-
-      if (sort === 'urgent') {
-        jobs = jobs.sort((a, b) => {
-          if (a.urgency === 'emergency' && b.urgency !== 'emergency') return -1;
-          if (a.urgency !== 'emergency' && b.urgency === 'emergency') return 1;
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
-      } else if (sort === 'recent') {
-        jobs = jobs.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      } else if (sort === 'distance') {
-        jobs = jobs.sort(() => Math.random() - 0.5);
-      }
-
-      res.json(jobs);
-    } catch (error: any) {
-      console.error('Get jobs error:', error);
-      res.status(500).json({ message: error.message });
+app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { category, status, sort } = req.query;
+    const params: any = {};
+    
+    if (category && category !== 'all') {
+      params.categoryId = category as string;
     }
-  });
-
-  app.get('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
-    try {
-      const job = await storage.getJob(req.params.id);
-      if (!job) {
-        return res.status(404).json({ message: 'Job not found' });
-      }
-      res.json(job);
-    } catch (error: any) {
-      console.error('Get job error:', error);
-      res.status(500).json({ message: error.message });
+    if (status) {
+      params.status = status as string;
     }
-  });
 
+    // IMPORTANT: Filter jobs based on user role
+    if (req.user!.role === 'requester') {
+      // Requesters only see their own jobs
+      params.requesterId = req.user!.id;
+    } else if (req.user!.role === 'provider') {
+      // Providers see all open jobs and jobs assigned to them
+      // This is handled in the storage layer below
+      params.providerId = req.user!.id;
+    }
+    // Admins see all jobs (no filter added)
+
+    let jobs = await storage.getJobs(params);
+
+    // If provider, also include open jobs they can accept
+    if (req.user!.role === 'provider') {
+      const openJobs = await storage.getJobs({ status: 'open' });
+      // Merge and deduplicate
+      const jobMap = new Map();
+      [...jobs, ...openJobs].forEach(job => {
+        if (!jobMap.has(job.id)) {
+          jobMap.set(job.id, job);
+        }
+      });
+      jobs = Array.from(jobMap.values());
+    }
+
+    // Sort based on query parameter
+    if (sort === 'urgent') {
+      jobs = jobs.sort((a, b) => {
+        if (a.urgency === 'emergency' && b.urgency !== 'emergency') return -1;
+        if (a.urgency !== 'emergency' && b.urgency === 'emergency') return 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    } else if (sort === 'recent') {
+      jobs = jobs.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    } else if (sort === 'distance') {
+      jobs = jobs.sort(() => Math.random() - 0.5);
+    }
+
+    res.json(jobs);
+  } catch (error: any) {
+    console.error('Get jobs error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Also update GET /api/jobs/:id to ensure user can only access their own jobs
+app.get('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const job = await storage.getJob(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Check permissions based on role
+    if (req.user!.role === 'requester' && job.requesterId !== req.user!.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    if (req.user!.role === 'provider' && 
+        job.providerId !== req.user!.id && 
+        job.status !== 'open') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    res.json(job);
+  } catch (error: any) {
+    console.error('Get job error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+
+  
   app.post('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
     try {
       if (req.user!.role !== 'requester') {
