@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -161,63 +162,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // In server/routes.ts - Update the GET /api/jobs endpoint
 
-app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
+app.post('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { category, status, sort } = req.query;
-    const params: any = {};
+    if (req.user!.role !== 'requester') {
+      return res.status(403).json({ message: 'Only requesters can post jobs' });
+    }
+
+    const validatedData = insertJobSchema.parse(req.body);
     
-    if (category && category !== 'all') {
-      params.categoryId = category as string;
-    }
-    if (status) {
-      params.status = status as string;
-    }
-
-    // IMPORTANT: Filter jobs based on user role
-    if (req.user!.role === 'requester') {
-      // Requesters only see their own jobs
-      params.requesterId = req.user!.id;
-    } else if (req.user!.role === 'provider') {
-      // Providers see all open jobs and jobs assigned to them
-      // This is handled in the storage layer below
-      params.providerId = req.user!.id;
-    }
-    // Admins see all jobs (no filter added)
-
-    let jobs = await storage.getJobs(params);
-
-    // If provider, also include open jobs they can accept
-    if (req.user!.role === 'provider') {
-      const openJobs = await storage.getJobs({ status: 'open' });
-      // Merge and deduplicate
-      const jobMap = new Map();
-      [...jobs, ...openJobs].forEach(job => {
-        if (!jobMap.has(job.id)) {
-          jobMap.set(job.id, job);
-        }
+    // Check if we need to create a custom category
+    let categoryId = validatedData.categoryId;
+    
+    // If categoryId is -1 (our indicator for custom category), create a new category
+    if (categoryId === -1) {
+      // Extract custom category from description or use a default
+      const customCategoryName = req.body.customCategory || 'Custom Service';
+      
+      // Create new category
+      const newCategory = await storage.createCategory({
+        name: customCategoryName,
+        description: `Custom service category: ${customCategoryName}`,
       });
-      jobs = Array.from(jobMap.values());
+      
+      categoryId = newCategory.id;
     }
 
-    // Sort based on query parameter
-    if (sort === 'urgent') {
-      jobs = jobs.sort((a, b) => {
-        if (a.urgency === 'emergency' && b.urgency !== 'emergency') return -1;
-        if (a.urgency !== 'emergency' && b.urgency === 'emergency') return 1;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-    } else if (sort === 'recent') {
-      jobs = jobs.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    } else if (sort === 'distance') {
-      jobs = jobs.sort(() => Math.random() - 0.5);
-    }
+    const job = await storage.createJob({
+      ...validatedData,
+      categoryId: categoryId,
+      requesterId: req.user!.id,
+    });
 
-    res.json(jobs);
+    res.status(201).json(job);
   } catch (error: any) {
-    console.error('Get jobs error:', error);
-    res.status(500).json({ message: error.message });
+    if (error instanceof ZodError) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: error.issues.map(i => ({ field: i.path.join('.'), message: i.message }))
+      });
+    }
+    console.error('Create job error:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
