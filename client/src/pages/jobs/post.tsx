@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -15,30 +14,22 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { insertJobSchema, type Category } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { z } from 'zod';
-
-// Extend the schema to include custom category
-const extendedJobSchema = insertJobSchema.extend({
-  customCategory: z.string().optional(),
-});
 
 export default function PostJob() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
   });
 
   const form = useForm({
-    resolver: zodResolver(extendedJobSchema),
+    resolver: zodResolver(insertJobSchema),
     defaultValues: {
       title: '',
       description: '',
       categoryId: undefined as unknown as number,
-      customCategory: '',
       latitude: '',
       longitude: '',
       address: '',
@@ -50,25 +41,7 @@ export default function PostJob() {
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
-      // Prepare the job data
-      const jobData = { 
-        title: data.title,
-        description: data.description,
-        categoryId: data.categoryId,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        address: data.address,
-        urgency: data.urgency,
-        preferredTime: data.preferredTime,
-        photos: data.photos,
-      };
-
-      // If using custom category, send both categoryId and customCategory
-      if (data.categoryId === -1 && data.customCategory) {
-        jobData.categoryId = -1; // Keep -1 to indicate custom category
-      }
-
-      const res = await apiRequest('POST', '/api/jobs', jobData);
+      const res = await apiRequest('POST', '/api/jobs', data);
       return res.json();
     },
     onSuccess: () => {
@@ -117,22 +90,9 @@ export default function PostJob() {
     }
   };
 
-  const handleCategoryChange = (value: string) => {
-    setSelectedCategory(value);
-    
-    if (value === 'other') {
-      form.setValue('categoryId', -1); // Use -1 to indicate custom category
-    } else {
-      form.setValue('categoryId', parseInt(value));
-      form.setValue('customCategory', '');
-    }
-  };
-
   const onSubmit = (data: any) => {
     mutation.mutate(data);
   };
-
-  const showCustomCategory = selectedCategory === 'other';
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
@@ -186,53 +146,33 @@ export default function PostJob() {
                 )}
               />
 
-              <div className="space-y-4">
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select
-                    onValueChange={handleCategoryChange}
-                    value={selectedCategory}
-                  >
-                    <FormControl>
-                      <SelectTrigger data-testid="select-job-category">
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {categories?.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id.toString()}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-
-                {showCustomCategory && (
-                  <FormField
-                    control={form.control}
-                    name="customCategory"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Specify Category</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your specific category (e.g., Furniture Assembly, Pet Sitting)"
-                            data-testid="input-custom-category"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Please specify the type of service you need
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+              <FormField
+                control={form.control}
+                name="categoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(parseInt(value))}
+                      value={field.value?.toString()}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-job-category">
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories?.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id.toString()}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </div>
+              />
 
               <div className="space-y-4">
                 <FormLabel>Location</FormLabel>
@@ -261,29 +201,6 @@ export default function PostJob() {
                         />
                       </FormControl>
                       <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {/* Hidden fields for coordinates */}
-                <FormField
-                  control={form.control}
-                  name="latitude"
-                  render={({ field }) => (
-                    <FormItem className="hidden">
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="longitude"
-                  render={({ field }) => (
-                    <FormItem className="hidden">
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
                     </FormItem>
                   )}
                 />
