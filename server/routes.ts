@@ -172,10 +172,11 @@ app.post('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
     
     // Check if we need to create a custom category
     let categoryId = validatedData.categoryId;
+    let jobDescription = validatedData.description;
     
     // If categoryId is -1 (our indicator for custom category), create a new category
     if (categoryId === -1) {
-      // Extract custom category from description or use a default
+      // Extract custom category from the request body
       const customCategoryName = req.body.customCategory || 'Custom Service';
       
       // Create new category
@@ -185,11 +186,15 @@ app.post('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
       });
       
       categoryId = newCategory.id;
+      
+      // Add category info to description for context
+      jobDescription = `[Service Type: ${customCategoryName}] ${validatedData.description}`;
     }
 
     const job = await storage.createJob({
       ...validatedData,
       categoryId: categoryId,
+      description: jobDescription,
       requesterId: req.user!.id,
     });
 
