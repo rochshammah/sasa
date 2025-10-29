@@ -15,21 +15,28 @@ import { useToast } from '@/hooks/use-toast';
 import { insertJobSchema, type Category } from '@shared/schema';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 
+// Extend the schema to include custom category
+const extendedJobSchema = insertJobSchema.extend({
+  customCategory: z.string().optional(),
+});
+
 export default function PostJob() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
   });
 
   const form = useForm({
-    resolver: zodResolver(insertJobSchema),
+    resolver: zodResolver(extendedJobSchema),
     defaultValues: {
       title: '',
       description: '',
       categoryId: undefined as unknown as number,
+      customCategory: '',
       latitude: '',
       longitude: '',
       address: '',
@@ -41,7 +48,13 @@ export default function PostJob() {
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest('POST', '/api/jobs', data);
+      // If using custom category, we'll handle it differently
+      const jobData = { ...data };
+      
+      // Remove customCategory from the main data as it's not in the original schema
+      delete jobData.customCategory;
+      
+      const res = await apiRequest('POST', '/api/jobs', jobData);
       return res.json();
     },
     onSuccess: () => {
@@ -90,7 +103,23 @@ export default function PostJob() {
     }
   };
 
+  const handleCategoryChange = (value: string) => {
+    if (value === 'other') {
+      setShowCustomCategory(true);
+      form.setValue('categoryId', -1); // Use -1 to indicate custom category
+    } else {
+      setShowCustomCategory(false);
+      form.setValue('categoryId', parseInt(value));
+      form.setValue('customCategory', '');
+    }
+  };
+
   const onSubmit = (data: any) => {
+    // If using custom category, append it to the description
+    if (data.categoryId === -1 && data.customCategory) {
+      data.description = `[${data.customCategory}] ${data.description}`;
+      data.categoryId = 1; // Use a default category ID, or you can create a new category dynamically
+    }
     mutation.mutate(data);
   };
 
@@ -146,33 +175,59 @@ export default function PostJob() {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="categoryId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                      value={field.value?.toString()}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-job-category">
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {categories?.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id.toString()}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+              <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="categoryId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <Select
+                        onValueChange={handleCategoryChange}
+                        value={field.value?.toString()}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-job-category">
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {categories?.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id.toString()}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {showCustomCategory && (
+                  <FormField
+                    control={form.control}
+                    name="customCategory"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Specify Category</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter your specific category"
+                            data-testid="input-custom-category"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Please specify the type of service you need
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
-              />
+              </div>
 
               <div className="space-y-4">
                 <FormLabel>Location</FormLabel>
