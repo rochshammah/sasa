@@ -18,7 +18,7 @@ import { ZodError } from 'zod';
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add CORS middleware
   app.use(cors({
-    origin: process.env.VERCEL_URL || 'https://sasa-indol.vercel.app', // Adjust to your frontend URL
+    origin: process.env.VERCEL_URL || 'https://sasa-jet.vercel.app', // Adjust to your frontend URL
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   }));
